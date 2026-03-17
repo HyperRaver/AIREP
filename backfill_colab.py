@@ -119,15 +119,23 @@ pytrends = TrendReq(hl="en-US", tz=360)
 end_date = datetime.now(timezone.utc).date()
 start_date = end_date - timedelta(days=1825)
 
+OVERLAP_DAYS = 7
 chunk_size = 250
 all_data = {}
 scale_factor = 1.0
 prev_chunk_last_week = None
 current_start = start_date
 chunk_num = 0
+consecutive_failures = 0
+MAX_CONSECUTIVE_FAILURES = 3
 
 while current_start < end_date:
     current_end = min(current_start + timedelta(days=chunk_size), end_date)
+
+    # Avoid tiny chunks that cause infinite loops
+    if (current_end - current_start).days < 2:
+        break
+
     timeframe = f"{current_start.strftime('%Y-%m-%d')} {current_end.strftime('%Y-%m-%d')}"
     chunk_num += 1
     print(f"  Chunk {chunk_num}: {timeframe}")
@@ -135,6 +143,7 @@ while current_start < end_date:
     try:
         pytrends.build_payload(KEYWORDS, cat=0, timeframe=timeframe, geo="", gprop="")
         df = pytrends.interest_over_time()
+        consecutive_failures = 0
     except Exception as e:
         print(f"    WARNING: Failed ({e}), retrying in 60s...")
         time.sleep(60)
@@ -142,19 +151,26 @@ while current_start < end_date:
             pytrends = TrendReq(hl="en-US", tz=360)
             pytrends.build_payload(KEYWORDS, cat=0, timeframe=timeframe, geo="", gprop="")
             df = pytrends.interest_over_time()
+            consecutive_failures = 0
         except Exception as e2:
             print(f"    SKIPPED: {e2}")
-            current_start = current_end - timedelta(days=7)
+            consecutive_failures += 1
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                print(f"    Stopping after {MAX_CONSECUTIVE_FAILURES} consecutive failures (rate limited).")
+                break
+            # Advance past this chunk to avoid re-requesting the same range
+            current_start = current_end
+            time.sleep(60)
             continue
 
     if df.empty:
         print("    Empty response, skipping")
-        current_start = current_end - timedelta(days=7)
+        current_start = current_end
         time.sleep(15)
         continue
 
     # Normalize across chunks using overlap
-    if prev_chunk_last_week is not None and len(df) > 7:
+    if prev_chunk_last_week is not None and len(df) > OVERLAP_DAYS:
         overlap_dates = sorted(set(prev_chunk_last_week.keys()) & set(
             d.strftime("%Y-%m-%d") for d in df.index
         ))
@@ -172,7 +188,7 @@ while current_start < end_date:
 
     # Save overlap for next chunk
     prev_chunk_last_week = {}
-    for i in range(max(0, len(df) - 7), len(df)):
+    for i in range(max(0, len(df) - OVERLAP_DAYS), len(df)):
         row = df.iloc[i]
         date_str = row.name.strftime("%Y-%m-%d")
         prev_chunk_last_week[date_str] = {
@@ -188,7 +204,8 @@ while current_start < end_date:
                 kw: round(int(row[kw]) * scale_factor, 2) for kw in KEYWORDS
             }
 
-    current_start = current_end - timedelta(days=7)
+    # Advance with overlap for normalization
+    current_start = current_end - timedelta(days=OVERLAP_DAYS)
     time.sleep(15)
 
 # Write CSV
