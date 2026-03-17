@@ -9,7 +9,8 @@ Bitcoin 5-Year Historical Data Backfill — Run in Google Colab
 Or mount Google Drive and change OUTPUT_DIR to save there directly.
 """
 
-# !pip install pytrends requests  # Uncomment if needed in Colab
+import subprocess
+subprocess.check_call(["pip", "install", "-q", "yfinance", "pytrends", "requests"])
 
 import csv
 import os
@@ -17,65 +18,50 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import requests
+import yfinance as yf
 
 OUTPUT_DIR = "data"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ============================================================
-# 1. BTC PRICE (CoinGecko — free, no API key)
+# 1. BTC PRICE (Yahoo Finance — free, no API key)
 # ============================================================
 print("=" * 60)
 print("1/3  Fetching BTC price data (5 years)...")
 print("=" * 60)
 
-url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
-params = {"vs_currency": "usd", "days": 1825, "interval": "daily"}
-resp = requests.get(url, params=params, timeout=60)
-resp.raise_for_status()
-data = resp.json()
-
-prices = data["prices"]
-market_caps = data["market_caps"]
-volumes = data["total_volumes"]
-
-# Build records keyed by date
-records = {}
-for ts_ms, price in prices:
-    date = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
-    records[date] = {"date": date, "price_usd": round(price, 2)}
-for ts_ms, mcap in market_caps:
-    date = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
-    if date in records:
-        records[date]["market_cap_usd"] = round(mcap, 2)
-for ts_ms, vol in volumes:
-    date = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
-    if date in records:
-        records[date]["volume_24h_usd"] = round(vol, 2)
-
-# Derive OHLC approximation + daily change from daily closes
-sorted_dates = sorted(records.keys())
-prev_price = None
-for date in sorted_dates:
-    rec = records[date]
-    price = rec["price_usd"]
-    rec["open"] = prev_price if prev_price is not None else price
-    rec["high"] = max(rec["open"], price)
-    rec["low"] = min(rec["open"], price)
-    rec["close"] = price
-    rec["change_24h_pct"] = round((price - prev_price) / prev_price * 100, 4) if prev_price else ""
-    rec.setdefault("market_cap_usd", "")
-    rec.setdefault("volume_24h_usd", "")
-    prev_price = price
+btc = yf.Ticker("BTC-USD")
+df = btc.history(period="5y", interval="1d")
+print(f"  Got {len(df)} rows from Yahoo Finance")
 
 # Write CSV
 btc_file = os.path.join(OUTPUT_DIR, "btc_price.csv")
 fieldnames = ["date", "price_usd", "market_cap_usd", "volume_24h_usd",
               "change_24h_pct", "open", "high", "low", "close"]
+
+prev_close = None
+records = {}
 with open(btc_file, "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=fieldnames)
     writer.writeheader()
-    for date in sorted_dates:
-        writer.writerow(records[date])
+    for idx, row in df.iterrows():
+        date_str = idx.strftime("%Y-%m-%d")
+        close = row["Close"]
+        change_pct = round((close - prev_close) / prev_close * 100, 4) if prev_close else ""
+        rec = {
+            "date": date_str,
+            "price_usd": round(close, 2),
+            "market_cap_usd": "",
+            "volume_24h_usd": round(row["Volume"], 2),
+            "change_24h_pct": change_pct,
+            "open": round(row["Open"], 2),
+            "high": round(row["High"], 2),
+            "low": round(row["Low"], 2),
+            "close": round(close, 2),
+        }
+        writer.writerow(rec)
+        records[date_str] = rec
+        prev_close = close
 
 print(f"  Saved {len(records)} days -> {btc_file}")
 
