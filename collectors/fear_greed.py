@@ -105,5 +105,49 @@ def collect():
     return record
 
 
+def backfill(days=1825):
+    """Backfill historical Fear & Greed data from Alternative.me.
+
+    The API supports a 'limit' parameter for historical data.
+    Data availability starts from ~Feb 2018.
+    """
+    print(f"Backfilling {days} days of Fear & Greed data...")
+
+    # Fetch historical Fear & Greed
+    params = {"limit": days, "format": "json"}
+    resp = requests.get(FEAR_GREED_URL, params=params, timeout=60)
+    resp.raise_for_status()
+    data = resp.json()["data"]
+
+    # Build records (API returns newest first)
+    records = []
+    for entry in reversed(data):
+        ts = int(entry["timestamp"])
+        date = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+        records.append({
+            "date": date,
+            "fear_greed_value": int(entry["value"]),
+            "fear_greed_class": entry["value_classification"],
+            "btc_dominance_pct": "",
+            "market_cap_change_24h_pct": "",
+            "sentix_proxy_score": "",
+        })
+
+    # Write all records to CSV (overwrite for backfill)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    fieldnames = [
+        "date", "fear_greed_value", "fear_greed_class",
+        "btc_dominance_pct", "market_cap_change_24h_pct", "sentix_proxy_score",
+    ]
+    with open(OUTPUT_FILE, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for rec in records:
+            writer.writerow(rec)
+
+    print(f"  Saved {len(records)} days of Fear & Greed data to {OUTPUT_FILE}")
+    return records
+
+
 if __name__ == "__main__":
     collect()

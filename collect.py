@@ -54,13 +54,50 @@ def run_all():
     return len(errors) == 0
 
 
+def run_backfill(days):
+    """Run backfill for all collectors."""
+    print(f"\n{'='*60}")
+    print(f"Bitcoin Historical Backfill - {days} days")
+    print(f"{'='*60}\n")
+
+    results = {}
+    errors = []
+
+    for name, collector in [
+        ("BTC Price", btc_price),
+        ("Fear & Greed", fear_greed),
+        ("Google Trends", google_trends),
+    ]:
+        try:
+            results[name] = collector.backfill(days)
+        except Exception as e:
+            errors.append((name, str(e)))
+            print(f"  ERROR [{name}]: {e}")
+
+    print(f"\n{'='*60}")
+    print(f"Backfill done. {len(results)} succeeded, {len(errors)} failed.")
+    if errors:
+        for name, err in errors:
+            print(f"  FAILED: {name} - {err}")
+    print(f"{'='*60}\n")
+
+    return len(errors) == 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="Bitcoin daily data collector")
     parser.add_argument("--schedule", action="store_true", help="Run on daily schedule (00:05 UTC)")
     parser.add_argument("--price", action="store_true", help="Collect BTC price only")
     parser.add_argument("--sentiment", action="store_true", help="Collect Fear & Greed only")
     parser.add_argument("--trends", action="store_true", help="Collect Google Trends only")
+    parser.add_argument("--backfill", action="store_true", help="Backfill historical data")
+    parser.add_argument("--days", type=int, default=1825, help="Number of days to backfill (default: 1825 = 5 years)")
     args = parser.parse_args()
+
+    # Backfill mode
+    if args.backfill:
+        success = run_backfill(args.days)
+        sys.exit(0 if success else 1)
 
     # Run specific collector if flagged
     if args.price:
