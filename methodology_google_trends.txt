@@ -43,6 +43,17 @@ the overlap ratios are reported as diagnostics to assess calibration
 stability.
 
 The resulting dataset contains weekly observations for all eleven search terms
-on a single, internally consistent relative scale. All data collection scripts,
-normalisation parameters, and diagnostic outputs are available in the study's
-code repository for reproducibility.
+on a single, internally consistent relative scale, indexed to the anchor
+keyword's historical peak (the week of 3 January 2021 for "buy bitcoin,"
+which corresponds to a value of 100). Because all keywords share this common
+reference point, values exceeding 100 are both expected and meaningful: they
+indicate that a given search term's weekly interest surpassed the anchor's
+peak. For example, "bitcoin ETF" reached a normalised value of approximately
+373 during the week of its regulatory approval (7 January 2024), indicating
+search interest roughly 3.7 times greater than the anchor's historical
+maximum. Capping values at 100 would obscure these cross-keyword magnitude
+differences, which are central to the sentiment analysis conducted in this
+study.
+
+All data collection scripts, normalisation parameters, and diagnostic outputs
+are available in the study's code repository for reproducibility.
