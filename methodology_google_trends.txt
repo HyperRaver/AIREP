@@ -1,0 +1,48 @@
+Google Trends Data Collection — Methodology Paragraph
+======================================================
+(For use in MSc thesis methodology section)
+
+
+Google Trends data for eleven Bitcoin-related search terms was collected at
+weekly granularity over an eight-year period (April 2018 to April 2026) using
+the pytrends Python library (v4.9.2), which interfaces with the unofficial
+Google Trends API. Google Trends reports search interest as a relative index
+scaled from 0 to 100, where 100 represents the peak popularity within the
+queried timeframe and geographic scope (Google, 2024). Because this
+normalisation is performed independently for each API request, raw values from
+separate queries are not directly comparable — a value of 50 in one request may
+correspond to a different absolute search volume than a value of 50 in another.
+
+Two methodological challenges arise. First, the Google Trends API permits a
+maximum of five keywords per request, requiring the eleven search terms to be
+split across three batches. Second, weekly-resolution data is only available
+for time windows shorter than five years, necessitating two sequential pulls
+to cover the full eight-year study period. Both operations introduce
+scale inconsistencies that must be corrected before analysis.
+
+To address the first challenge (cross-batch normalisation), a single anchor
+keyword — "buy bitcoin" — was included in every batch. This keyword was
+selected from the study's own set of terms (rather than an external reference
+term) to avoid introducing extraneous variation. Within each time period,
+batch-specific scaling factors were computed as the median ratio of the anchor
+keyword's values in the reference batch to its values in each subsequent batch,
+using only weeks where both values exceeded zero. All non-anchor keyword values
+in each batch were then multiplied by the corresponding scaling factor, placing
+all eleven keywords on a common within-period scale.
+
+To address the second challenge (cross-period normalisation), the two
+five-year pulls were configured with a six-month temporal overlap (April 2022
+to October 2022), yielding approximately 26 shared weekly observations. A
+cross-period scaling factor was computed as the median ratio of the anchor
+keyword's values in the overlap window between the first and second period.
+All values from the second period were multiplied by this factor, and the
+non-overlapping portion was appended to the first period's data. Median
+ratios were preferred over mean ratios to reduce sensitivity to outlier weeks
+(e.g., sudden spikes from news events). The standard deviation and range of
+the overlap ratios are reported as diagnostics to assess calibration
+stability.
+
+The resulting dataset contains weekly observations for all eleven search terms
+on a single, internally consistent relative scale. All data collection scripts,
+normalisation parameters, and diagnostic outputs are available in the study's
+code repository for reproducibility.
