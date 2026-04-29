@@ -3,8 +3,8 @@ Google Trends Data Collection — Methodology Paragraph
 (For use in MSc thesis methodology section)
 
 
-Google Trends data for eleven Bitcoin-related search terms was collected at
-weekly granularity over an eight-year period (April 2018 to April 2026) using
+Google Trends data for 28 Bitcoin-related search terms was collected at weekly
+granularity over an eight-year period (6 April 2018 to 27 March 2026) using
 the pytrends Python library (v4.9.2), which interfaces with the unofficial
 Google Trends API. Google Trends reports search interest as a relative index
 scaled from 0 to 100, where 100 represents the peak popularity within the
@@ -13,47 +13,65 @@ normalisation is performed independently for each API request, raw values from
 separate queries are not directly comparable — a value of 50 in one request may
 correspond to a different absolute search volume than a value of 50 in another.
 
-Two methodological challenges arise. First, the Google Trends API permits a
-maximum of five keywords per request, requiring the eleven search terms to be
-split across three batches. Second, weekly-resolution data is only available
-for time windows shorter than five years, necessitating two sequential pulls
-to cover the full eight-year study period. Both operations introduce
-scale inconsistencies that must be corrected before analysis.
+The 28 search terms were divided a priori into two sentiment groups — positive
+and negative — each normalised independently to preserve within-group relative
+magnitudes. The positive group comprises 14 terms associated with bullish
+sentiment or acquisition intent (e.g., "invest in bitcoin," "bitcoin halving,"
+"bitcoin etf," "diamond hands"), anchored to "buy bitcoin." The negative group
+comprises 14 terms associated with bearish sentiment or divestment intent
+(e.g., "bitcoin crash," "crypto winter," "short bitcoin," "bitcoin dead"),
+anchored to "sell bitcoin." Anchors were selected from the study's own keyword
+sets to avoid introducing extraneous variation.
 
-To address the first challenge (cross-batch normalisation), a single anchor
-keyword — "buy bitcoin" — was included in every batch. This keyword was
-selected from the study's own set of terms (rather than an external reference
-term) to avoid introducing extraneous variation. Within each time period,
+Three methodological challenges arise. First, the Google Trends API permits a
+maximum of five keywords per request, requiring each group's terms to be split
+across four batches. Second, weekly-resolution data is only available for time
+windows shorter than five years, necessitating two sequential pulls per group
+to cover the full study period. Third, both of these operations introduce scale
+inconsistencies that must be corrected before analysis.
+
+To address cross-batch normalisation, the respective anchor keyword was
+included in every batch within its group. Within each time period,
 batch-specific scaling factors were computed as the median ratio of the anchor
-keyword's values in the reference batch to its values in each subsequent batch,
-using only weeks where both values exceeded zero. All non-anchor keyword values
-in each batch were then multiplied by the corresponding scaling factor, placing
-all eleven keywords on a common within-period scale.
+keyword's values in the reference batch (batch 1) to its values in each
+subsequent batch, using only weeks where both values exceeded zero. All
+non-anchor keyword values in each batch were then multiplied by the
+corresponding scaling factor, placing all keywords within a group on a common
+within-period scale. The use of median ratios follows the recommendation of
+Eichenauer, Indergand, Martínez, and Sax (2022) and reduces sensitivity to
+outlier weeks caused by sudden news-driven spikes.
 
-To address the second challenge (cross-period normalisation), the two
-five-year pulls were configured with a six-month temporal overlap (April 2022
-to October 2022), yielding approximately 26 shared weekly observations. A
-cross-period scaling factor was computed as the median ratio of the anchor
-keyword's values in the overlap window between the first and second period.
-All values from the second period were multiplied by this factor, and the
-non-overlapping portion was appended to the first period's data. Median
-ratios were preferred over mean ratios to reduce sensitivity to outlier weeks
-(e.g., sudden spikes from news events). The standard deviation and range of
-the overlap ratios are reported as diagnostics to assess calibration
-stability.
+To address cross-period normalisation, the two pulls per group were configured
+with a six-month temporal overlap (April 2022 to October 2022), yielding
+approximately 26 shared weekly observations. A cross-period scaling factor was
+computed as the median ratio of the anchor keyword's values in the overlap
+window between the first and second period. All values from the second period
+were then multiplied by this factor, and the non-overlapping portion was
+appended to the first period's data. The standard deviation and range of the
+overlap ratios are reported as diagnostics to assess calibration stability.
 
-The resulting dataset contains weekly observations for all eleven search terms
-on a single, internally consistent relative scale, indexed to the anchor
-keyword's historical peak (the week of 3 January 2021 for "buy bitcoin,"
-which corresponds to a value of 100). Because all keywords share this common
-reference point, values exceeding 100 are both expected and meaningful: they
-indicate that a given search term's weekly interest surpassed the anchor's
-peak. For example, "bitcoin ETF" reached a normalised value of approximately
-373 during the week of its regulatory approval (7 January 2024), indicating
-search interest roughly 3.7 times greater than the anchor's historical
-maximum. Capping values at 100 would obscure these cross-keyword magnitude
+The resulting dataset contains weekly observations for all search terms on two
+internally consistent relative scales — one for positive sentiment and one for
+negative sentiment — each indexed to their respective anchor keyword's
+historical peak (which corresponds to a value of 100). Because all keywords
+within a group share this common reference point, values exceeding 100 are
+both expected and meaningful: they indicate that a given search term's weekly
+interest surpassed the anchor's peak. This preserves cross-keyword magnitude
 differences, which are central to the sentiment analysis conducted in this
 study.
 
 All data collection scripts, normalisation parameters, and diagnostic outputs
 are available in the study's code repository for reproducibility.
+
+
+References
+----------
+Eichenauer, V.Z., Indergand, R., Martínez, I.Z. and Sax, C. (2022)
+    'Obtaining consistent time series from Google Trends', Economic Inquiry,
+    60(2), pp. 694–705.
+
+Da, Z., Engelberg, J. and Gao, P. (2011) 'In Search of Attention', Journal
+    of Finance, 66(5), pp. 1461–1499.
+
+Google (2024) Google Trends Help: FAQ. Available at:
+    https://support.google.com/trends/answer/4365533
