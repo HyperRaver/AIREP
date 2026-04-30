@@ -57,7 +57,7 @@ def fetch(pytrends_obj, keywords, timeframe, max_retries=3):
     for attempt in range(max_retries):
         try:
             pytrends_obj.build_payload(
-                keywords, cat=0, timeframe=timeframe, geo="", gprop=""
+                keywords, cat=0, timeframe=timeframe, geo="US", gprop=""
             )
             df = pytrends_obj.interest_over_time()
             if not df.empty and "isPartial" in df.columns:
