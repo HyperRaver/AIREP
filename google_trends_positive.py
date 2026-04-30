@@ -1,17 +1,14 @@
 """
-Google Trends Backfill — POSITIVE Sentiment Keywords
-=====================================================
+Google Trends Backfill — POSITIVE Sentiment (Pairwise Method)
+==============================================================
 Anchor: "buy bitcoin"
+Each keyword queried individually with the anchor for reliable scaling.
 Run in Google Colab.
-
-Normalization method: Eichenauer et al. (2022), Economic Inquiry.
-Cross-batch: median anchor ratio. Cross-period: 6-month overlap.
 """
 
 import subprocess
 subprocess.check_call(["pip", "install", "-q", "pytrends", "pandas"])
 
-import csv
 import os
 import time
 
@@ -50,67 +47,56 @@ PERIODS = [
 ]
 
 # ============================================================
-# BUILD BATCHES (anchor + up to 4 others)
+# FETCH: one request per keyword per period
 # ============================================================
 
-others = [kw for kw in KEYWORDS if kw.lower() != ANCHOR.lower()]
-batches = []
-for i in range(0, len(others), 4):
-    batch = [ANCHOR] + others[i:i + 4]
-    batches.append(batch)
-
-print(f"POSITIVE SENTIMENT GROUP")
+print("POSITIVE SENTIMENT GROUP (pairwise method)")
 print(f"  Anchor: '{ANCHOR}'")
 print(f"  Keywords: {len(KEYWORDS)}")
-print(f"  Batches: {len(batches)}")
-for i, b in enumerate(batches):
-    print(f"    Batch {i + 1}: {b}")
 print(f"  Periods: {len(PERIODS)}")
-print(f"  Total API requests: {len(batches) * len(PERIODS)}")
+print(f"  Total API requests: {len(KEYWORDS) * len(PERIODS)}")
 print()
 
-# ============================================================
-# FETCH DATA
-# ============================================================
-
 pytrends = TrendReq(hl="en-US", tz=360)
-raw_data = {}
+
+# raw_pairs[period_idx][keyword] = DataFrame with columns [ANCHOR, keyword]
+raw_pairs = {p: {} for p in range(len(PERIODS))}
 
 for p_idx, (start, end) in enumerate(PERIODS):
     timeframe = f"{start} {end}"
-    raw_data[p_idx] = {}
 
-    for b_idx, batch in enumerate(batches):
-        label = f"Period {p_idx + 1}/{len(PERIODS)}, Batch {b_idx + 1}/{len(batches)}"
-        print(f"{label}: {batch}")
+    for kw in KEYWORDS:
+        pair = [ANCHOR, kw]
+        print(f"  Period {p_idx + 1}, {kw}...", end=" ", flush=True)
 
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 pytrends.build_payload(
-                    batch, cat=0, timeframe=timeframe, geo="", gprop=""
+                    pair, cat=0, timeframe=timeframe, geo="", gprop=""
                 )
                 df = pytrends.interest_over_time()
                 if not df.empty and "isPartial" in df.columns:
                     df = df.drop(columns=["isPartial"])
-                raw_data[p_idx][b_idx] = df
-                print(f"  OK — {len(df)} weeks")
+                raw_pairs[p_idx][kw] = df
+                print(f"OK ({len(df)} weeks)")
                 break
             except Exception as e:
                 wait = 60 * (attempt + 1)
-                print(f"  Attempt {attempt + 1} failed: {e}")
-                if attempt < max_retries - 1:
-                    print(f"  Retrying in {wait}s...")
-                    time.sleep(wait)
-                    pytrends = TrendReq(hl="en-US", tz=360)
-                else:
-                    print(f"  FAILED after {max_retries} attempts")
-                    raw_data[p_idx][b_idx] = pd.DataFrame()
+                print(f"RETRY({attempt + 1})...", end=" ", flush=True)
+                time.sleep(wait)
+                pytrends = TrendReq(hl="en-US", tz=360)
+                if attempt == max_retries - 1:
+                    print(f"FAILED: {e}")
+                    raw_pairs[p_idx][kw] = pd.DataFrame()
 
-        time.sleep(15)
+        time.sleep(10)
 
 # ============================================================
-# NORMALIZE WITHIN EACH PERIOD (across batches)
+# NORMALIZE WITHIN EACH PERIOD
+# For each pair, compute: keyword_normalized = keyword * (100 / anchor)
+# at each time point. This puts every keyword on the anchor's absolute scale.
+# Then we keep the anchor's raw values from ONE reference pair.
 # ============================================================
 
 print("\n" + "=" * 60)
@@ -120,37 +106,49 @@ print("=" * 60)
 normalized_periods = {}
 
 for p_idx in range(len(PERIODS)):
-    ref_df = raw_data[p_idx].get(0, pd.DataFrame())
-    if ref_df.empty:
-        print(f"  Period {p_idx + 1}: batch 1 empty, skipping")
+    # Get anchor's raw values from the first successful pair
+    anchor_ref = None
+    for kw in KEYWORDS:
+        df = raw_pairs[p_idx].get(kw, pd.DataFrame())
+        if not df.empty and ANCHOR in df.columns:
+            anchor_ref = df[ANCHOR].astype(float)
+            break
+
+    if anchor_ref is None:
+        print(f"  Period {p_idx + 1}: no data, skipping")
         continue
 
-    combined = ref_df.copy()
-    anchor_ref = ref_df[ANCHOR].astype(float)
+    combined = pd.DataFrame(index=anchor_ref.index)
+    combined[ANCHOR] = anchor_ref
 
-    for b_idx in range(1, len(batches)):
-        batch_df = raw_data[p_idx].get(b_idx, pd.DataFrame())
-        if batch_df.empty:
+    for kw in KEYWORDS:
+        df = raw_pairs[p_idx].get(kw, pd.DataFrame())
+        if df.empty or kw not in df.columns:
+            print(f"  Period {p_idx + 1}, {kw}: MISSING")
             continue
 
-        anchor_batch = batch_df[ANCHOR].astype(float)
-        mask = (anchor_ref > 0) & (anchor_batch > 0)
+        kw_values = df[kw].astype(float)
+        anchor_in_pair = df[ANCHOR].astype(float)
+
+        # Scale keyword relative to anchor:
+        # In this pair, anchor peaked at some value X (not necessarily 100
+        # if the keyword was more popular). We rescale so anchor matches
+        # anchor_ref from the reference pair.
+        mask = anchor_in_pair > 0
         if mask.sum() > 0:
-            ratios = anchor_ref[mask] / anchor_batch[mask]
+            ratios = anchor_ref[mask] / anchor_in_pair[mask]
             scale = ratios.median()
         else:
             scale = 1.0
 
-        print(f"  Period {p_idx + 1}, Batch {b_idx + 1}: "
-              f"scale={scale:.4f}, ratio_std={ratios.std():.4f}, n={mask.sum()}")
-
-        for col in batch_df.columns:
-            if col != ANCHOR:
-                combined[col] = batch_df[col].astype(float) * scale
+        combined[kw] = kw_values * scale
+        print(f"  Period {p_idx + 1}, {kw}: scale={scale:.4f}, "
+              f"ratio_std={ratios.std():.4f}" if mask.sum() > 0 else
+              f"  Period {p_idx + 1}, {kw}: scale=1.0 (no overlap)")
 
     normalized_periods[p_idx] = combined
     print(f"  Period {p_idx + 1} done: {len(combined)} weeks, "
-          f"{len(combined.columns)} keywords")
+          f"{len(combined.columns)} columns")
 
 # ============================================================
 # NORMALIZE ACROSS PERIODS (using overlap)

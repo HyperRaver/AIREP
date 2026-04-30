@@ -23,23 +23,25 @@ comprises 14 terms associated with bearish sentiment or divestment intent
 anchored to "sell bitcoin." Anchors were selected from the study's own keyword
 sets to avoid introducing extraneous variation.
 
-Three methodological challenges arise. First, the Google Trends API permits a
-maximum of five keywords per request, requiring each group's terms to be split
-across four batches. Second, weekly-resolution data is only available for time
+Two methodological challenges arise. First, the Google Trends API normalises
+each request independently, so keywords queried in separate requests receive
+incompatible scales. Second, weekly-resolution data is only available for time
 windows shorter than five years, necessitating two sequential pulls per group
-to cover the full study period. Third, both of these operations introduce scale
-inconsistencies that must be corrected before analysis.
+to cover the full eight-year study period.
 
-To address cross-batch normalisation, the respective anchor keyword was
-included in every batch within its group. Within each time period,
-batch-specific scaling factors were computed as the median ratio of the anchor
-keyword's values in the reference batch (batch 1) to its values in each
-subsequent batch, using only weeks where both values exceeded zero. All
-non-anchor keyword values in each batch were then multiplied by the
-corresponding scaling factor, placing all keywords within a group on a common
-within-period scale. The use of median ratios follows the recommendation of
-Eichenauer, Indergand, Martínez, and Sax (2022) and reduces sensitivity to
-outlier weeks caused by sudden news-driven spikes.
+To address cross-keyword normalisation, a pairwise query design was adopted:
+each keyword was queried individually alongside its group's anchor keyword in a
+dedicated two-keyword request, yielding one request per keyword per time
+period. This design ensures that the anchor keyword always retains a strong
+signal in every request, avoiding the signal compression that can occur when
+a high-volume keyword dominates a multi-keyword batch (Eichenauer, Indergand,
+Martínez and Sax, 2022). For each pairwise request, a scaling factor was
+computed as the median ratio of the anchor's values in a designated reference
+pair to its values in the current pair, using only weeks where both values
+exceeded zero. The keyword's values were then multiplied by this factor,
+placing all keywords within a group on the anchor's native scale. The use of
+median ratios reduces sensitivity to outlier weeks caused by sudden
+news-driven spikes or integer rounding at low search volumes.
 
 To address cross-period normalisation, the two pulls per group were configured
 with a six-month temporal overlap (April 2022 to October 2022), yielding
@@ -56,9 +58,18 @@ negative sentiment — each indexed to their respective anchor keyword's
 historical peak (which corresponds to a value of 100). Because all keywords
 within a group share this common reference point, values exceeding 100 are
 both expected and meaningful: they indicate that a given search term's weekly
-interest surpassed the anchor's peak. This preserves cross-keyword magnitude
-differences, which are central to the sentiment analysis conducted in this
-study.
+interest surpassed the anchor's peak. For instance, "bitcoin ETF" reached a
+normalised value of approximately 373 during the week of its regulatory
+approval (7 January 2024), indicating search interest roughly 3.7 times
+greater than "buy bitcoin" at its historical maximum. This preserves
+cross-keyword magnitude differences, which are central to the sentiment
+analysis conducted in this study.
+
+Google Trends assigns each weekly observation to the Sunday that begins the
+reporting week (Sunday through Saturday). To align the sentiment data with
+weekly financial returns, each Google Trends observation was matched to the
+Friday closing price falling within the same reporting week, following the
+approach of Da, Engelberg and Gao (2011).
 
 All data collection scripts, normalisation parameters, and diagnostic outputs
 are available in the study's code repository for reproducibility.
@@ -68,10 +79,10 @@ References
 ----------
 Eichenauer, V.Z., Indergand, R., Martínez, I.Z. and Sax, C. (2022)
     'Obtaining consistent time series from Google Trends', Economic Inquiry,
-    60(2), pp. 694–705.
+    60(2), pp. 694-705.
 
 Da, Z., Engelberg, J. and Gao, P. (2011) 'In Search of Attention', Journal
-    of Finance, 66(5), pp. 1461–1499.
+    of Finance, 66(5), pp. 1461-1499.
 
 Google (2024) Google Trends Help: FAQ. Available at:
     https://support.google.com/trends/answer/4365533
